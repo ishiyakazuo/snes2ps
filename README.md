@@ -1,6 +1,7 @@
-# SNES controller to playstation(1/2) adapter firmware
+# SNES controller to playstation(1/2) adapter firmware (DUALSHOCK 2 version)
 
 AVR micro-controller firmware for an SNES controller to playstation (1/2, not USB) adapter.
+Forked from Raphnet's version to add fake DualShock 2 support for PS2 games.
 
 ## Project homepage
 
