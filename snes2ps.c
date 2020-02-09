@@ -1,6 +1,7 @@
 /*
     snes2psx: SNES controller to Playstation adapter
     Copyright (C) 2012-2014 Raphael Assenat <raph@raphnet.net>
+    Modified 2020 Jeff Stenhouse
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,13 +25,34 @@
 #define CMD_GET_DATA_42		0x42
 #define REP_DATA_START_5A	0x5a
 
-#define DEVICE_ID	0x41	/* digital pad */
+#define DEVICE_ID_DIGITAL_PS1 0x41
+#define DEVICE_ID_DUALSHOCK2  0x79
 
-#define ST_IDLE			0
-#define ST_READY		1
-#define ST_SEND_BUF0	2
-#define ST_SEND_BUF1	3
-#define ST_DONE			4
+enum {
+  ST_IDLE = 0,
+  ST_READY,
+  ST_SEND_BUF0,
+  ST_SEND_BUF1,
+  ST_ANALOGSTICKS,
+  ST_ANALOGBUTTONS,
+  ST_DONE
+};
+
+enum {
+  DS2_ANALOG_R = 0,
+  DS2_ANALOG_L,
+  DS2_ANALOG_U,
+  DS2_ANALOG_D,
+  DS2_ANALOG_TRIANGLE,
+  DS2_ANALOG_O,
+  DS2_ANALOG_X,
+  DS2_ANALOG_SQUARE,
+  DS2_ANALOG_L1,
+  DS2_ANALOG_R1,
+  DS2_ANALOG_L2,
+  DS2_ANALOG_R2,
+  MAX_DS2_ANALOG_BUTTONS // Sometimes is used as a throw-away value
+};
 
 /******** IO port definitions **************/
 #define SNES_LATCH_DDR  DDRC
@@ -60,7 +82,7 @@
 #define SNES_GET_DATA() (SNES_DATA_PIN & SNES_DATA_BIT)
 
 /*	PSX data : (MSb first)
-		Left    Down  Right  Up    Start  1   1   Select
+		Left    Down  Right  Up    Start  R3  L3  Select
 		Square  X     O      Tri.  R1     L1  R2  L2
 */
 #define PSX_LEFT		0x8000
@@ -68,6 +90,8 @@
 #define PSX_RIGHT		0x2000
 #define PSX_UP			0x1000
 #define PSX_START		0x0800
+#define PSX_R3			0x0400
+#define PSX_L3			0x0200
 #define PSX_SELECT		0x0100
 #define PSX_SQUARE		0x0080
 #define PSX_X			0x0040
@@ -97,129 +121,134 @@
 #define SNES_L		0x0020
 #define SNES_R		0x0010
 
+#define MAPPING_MASK (SNES_START | SNES_SELECT | SNES_A | SNES_B | SNES_X | SNES_Y | SNES_L)
+
 struct map_ent {
 	unsigned short s; // Snes bit
 	unsigned short p; // PSX bit
+  unsigned char analogByte;
 };
 
-#define ALT_MAPPING_SNES_BIT	SNES_SELECT
-
 static struct map_ent type1_mapping[] = {
-		{ SNES_B, 		PSX_X },
-		{ SNES_Y, 		PSX_SQUARE },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_O },
-		{ SNES_X,		PSX_TRIANGLE },
-		{ SNES_R,		PSX_R1 },
-		{ SNES_L,		PSX_L1 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_X,        DS2_ANALOG_X },
+		{ SNES_Y, 		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+		{ SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_O, DS2_ANALOG_O },
+		{ SNES_X,		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_R,		PSX_R1, DS2_ANALOG_R1 },
+		{ SNES_L,		PSX_L1, DS2_ANALOG_L1 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type2_mapping[] = {
-		{ SNES_B, 		PSX_O },
-		{ SNES_Y, 		PSX_X },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_R2 },
-		{ SNES_X,		PSX_TRIANGLE },
-		{ SNES_R,		PSX_R1 },
-		{ SNES_L,		PSX_SQUARE },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_O, DS2_ANALOG_O },
+		{ SNES_Y, 		PSX_X, DS2_ANALOG_X },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+    { SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_R2, DS2_ANALOG_R2 },
+		{ SNES_X,		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_R,		PSX_R1, DS2_ANALOG_R1 },
+		{ SNES_L,		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type3_mapping[] = {
-		{ SNES_B, 		PSX_TRIANGLE },
-		{ SNES_Y, 		PSX_O },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_X },
-		{ SNES_X,		PSX_SQUARE },
-		{ SNES_R,		PSX_R1 },
-		{ SNES_L,		PSX_L1 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_Y, 		PSX_O, DS2_ANALOG_O },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+    { SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_X,   DS2_ANALOG_X },
+		{ SNES_X,		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+		{ SNES_R,		PSX_R1, DS2_ANALOG_R1 },
+		{ SNES_L,		PSX_L1, DS2_ANALOG_L1 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type4_mapping[] = {
-		{ SNES_B, 		PSX_SQUARE },
-		{ SNES_Y, 		PSX_X },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_TRIANGLE },
-		{ SNES_X,		PSX_O },
-		{ SNES_R,		PSX_R1 },
-		{ SNES_L,		PSX_L1 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+		{ SNES_Y, 		PSX_X,   DS2_ANALOG_X },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+    { SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_X,		PSX_O, DS2_ANALOG_O },
+		{ SNES_R,		PSX_R1, DS2_ANALOG_R1 },
+		{ SNES_L,		PSX_L1, DS2_ANALOG_L1 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type5_mapping[] = {
-		{ SNES_B, 		PSX_O },
-		{ SNES_Y, 		PSX_TRIANGLE },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_SQUARE },
-		{ SNES_X,		PSX_X },
-		{ SNES_R,		PSX_L1 }, // L/R swapped
-		{ SNES_L,		PSX_R1 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_O, DS2_ANALOG_O },
+		{ SNES_Y, 		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+    { SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+		{ SNES_X,		PSX_X,   DS2_ANALOG_X },
+		{ SNES_R,		PSX_L1, DS2_ANALOG_L1 }, // L/R swapped
+		{ SNES_L,		PSX_R1, DS2_ANALOG_R1 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type6_mapping[] = { // Type 1 with L2/R2
-		{ SNES_B, 		PSX_X },
-		{ SNES_Y, 		PSX_SQUARE },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_UP },
-		{ SNES_DOWN,	PSX_DOWN },
-		{ SNES_LEFT,	PSX_LEFT },
-		{ SNES_RIGHT,	PSX_RIGHT },
-		{ SNES_A,		PSX_O },
-		{ SNES_X,		PSX_TRIANGLE },
-		{ SNES_R,		PSX_R2 },
-		{ SNES_L,		PSX_L2 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_X,   DS2_ANALOG_X },
+		{ SNES_Y, 		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+    { SNES_UP,		PSX_UP,       DS2_ANALOG_U },
+		{ SNES_DOWN,	PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_LEFT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_RIGHT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_A,		PSX_O, DS2_ANALOG_O },
+		{ SNES_X,		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_R,		PSX_R2, DS2_ANALOG_R2 },
+		{ SNES_L,		PSX_L2, DS2_ANALOG_L2 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent type7_mapping[] = { // Type 1 with rotated directions for right-hand arcade stick steering
-		{ SNES_B, 		PSX_X },
-		{ SNES_Y, 		PSX_SQUARE },
-		{ SNES_SELECT,	PSX_SELECT },
-		{ SNES_START,	PSX_START },
-		{ SNES_UP,		PSX_DOWN },
-		{ SNES_DOWN,	PSX_UP },
-		{ SNES_LEFT,	PSX_RIGHT },
-		{ SNES_RIGHT,	PSX_LEFT },
-		{ SNES_A,		PSX_O },
-		{ SNES_X,		PSX_TRIANGLE },
-		{ SNES_R,		PSX_L1 },
-		{ SNES_L,		PSX_R1 },
-		{ 0, 0 },
+		{ SNES_B, 		PSX_X,   DS2_ANALOG_X },
+		{ SNES_Y, 		PSX_SQUARE,   DS2_ANALOG_SQUARE },
+    { SNES_SELECT,	PSX_SELECT, MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_START,	PSX_START,    MAX_DS2_ANALOG_BUTTONS },
+		{ SNES_UP,		PSX_DOWN,     DS2_ANALOG_D },
+		{ SNES_DOWN,	PSX_UP,       DS2_ANALOG_U },
+		{ SNES_LEFT,	PSX_RIGHT,    DS2_ANALOG_R },
+		{ SNES_RIGHT,	PSX_LEFT,     DS2_ANALOG_L },
+		{ SNES_A,		PSX_O, DS2_ANALOG_O },
+		{ SNES_X,		PSX_TRIANGLE, DS2_ANALOG_TRIANGLE },
+		{ SNES_R,		PSX_L1, DS2_ANALOG_L1 },
+		{ SNES_L,		PSX_R1, DS2_ANALOG_R1 },
+		{ 0, 0, MAX_DS2_ANALOG_BUTTONS },
 };
 
 static struct map_ent *g_cur_map = type1_mapping;
 static unsigned char state = ST_IDLE;
 static volatile unsigned char psxbuf[2];
 static unsigned char snesbuf[2];
+static unsigned char deviceID = DEVICE_ID_DIGITAL_PS1;
+static unsigned char numStickBytes = 0;
+static unsigned char numButtonBytes = 0;
+static unsigned char psxAnalogButtons[13];
 
 #define CHIP_SELECT_ACTIVE()	(0 == (PINB & (1<<2)))
 
@@ -261,8 +290,8 @@ ISR(SPI_STC_vect)
 				}
 			}
 			else {
-				// Prepare the Device id (0x41)
-				SPDR = 0xff ^ DEVICE_ID;
+				// Prepare the Device ID (default is 0x41)
+				SPDR = 0xff ^ deviceID;
 				state = ST_READY;
 				ack();
 			}
@@ -303,11 +332,40 @@ ISR(SPI_STC_vect)
 
 		case ST_SEND_BUF1: // psxbuf[0] sent
 				SPDR = 0xff ^ psxbuf[1];
-				state = ST_DONE;
+        if (deviceID == DEVICE_ID_DUALSHOCK2) state = ST_ANALOGSTICKS;
+        else state = ST_DONE;
 				ack();
 				break;
 
-		case ST_DONE: // psxbuf[1] sent
+    case ST_ANALOGSTICKS: // psxbuf[1] sent, faking DualShock 2 sticks
+				SPDR = 0x80; // Sends 0x7F (default value for DS2 sticks)
+        numStickBytes--;
+        ack();
+        while (numStickBytes) {
+          if (SPSR & (1<<SPIF)) {
+            numStickBytes--;
+            SPDR = 0x80; // Send another 0x7F
+            ack();
+          }
+        }
+        state = ST_ANALOGBUTTONS;
+				break;
+
+    case ST_ANALOGBUTTONS: // Fake stick data sent, faking DualShock 2 analog buttons by sending either 0x00 or 0xFF
+				SPDR = psxAnalogButtons[0];
+        numButtonBytes++;
+        ack();
+        while (numButtonBytes < 12) {
+          if (SPSR & (1<<SPIF)) {
+            SPDR = psxAnalogButtons[numButtonBytes];
+            numButtonBytes++;
+            ack();
+          }
+        }
+        state = ST_DONE;
+				break;
+
+		case ST_DONE: // All data sent
 				SPDR = 0x00; // dont pull the bus low (send 0xff)
 				state = ST_IDLE;
 				break;
@@ -356,8 +414,14 @@ unsigned short snes2psx(unsigned short snesbits)
 	psxval = 0xffff;
 
 	for (i=0; map[i].s; i++) {
-		if (!(snesbits & map[i].s))
+		if (!(snesbits & map[i].s)) {
 			psxval &= ~(map[i].p);
+      psxAnalogButtons[map[i].analogByte] = 0x00; // Will send 0xFF
+    }
+    else
+    {
+      psxAnalogButtons[map[i].analogByte] = 0xFF; // Will send 0x00, or unpressed
+    }
 	}
 
 	return psxval;
@@ -449,7 +513,8 @@ int main(void)
 
 	snesUpdate();
 
-	switch (0xFFFF ^ (snesbuf[0]<<8 | snesbuf[1]))
+  unsigned short snesbits = 0xFFFF ^ (snesbuf[0]<<8 | snesbuf[1]);
+	switch (snesbits & MAPPING_MASK)
 	{
 		case SNES_START:
 			g_cur_map = type1_mapping;
@@ -473,6 +538,11 @@ int main(void)
 			g_cur_map = type7_mapping;
 			break;
 	}
+  if (snesbits & SNES_UP)
+  {
+    deviceID = DEVICE_ID_DUALSHOCK2;
+  }
+  memset(psxAnalogButtons, 0, 12);
 
 	sei();
 	while(1)
@@ -482,6 +552,8 @@ int main(void)
 		if (!CHIP_SELECT_ACTIVE()) {
 			SPDR = 0x00;
 			state = ST_IDLE;
+      numStickBytes = 4;
+      numButtonBytes = 0;
 		}
 
 		snesUpdate();
