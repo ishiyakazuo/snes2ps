@@ -28,6 +28,11 @@
 #define DEVICE_ID_DIGITAL_PS1 0x41
 #define DEVICE_ID_DUALSHOCK2  0x79
 
+#define DS2_STICK_CENTERED 0x7F
+#define DS2_ANALOG_BUTTON_PRESSED 0xFF
+#define DS2_ANALOG_BUTTON_UNPRESSED 0x00
+
+
 enum {
   ST_IDLE = 0,
   ST_READY,
@@ -338,13 +343,13 @@ ISR(SPI_STC_vect)
 				break;
 
     case ST_ANALOGSTICKS: // psxbuf[1] sent, faking DualShock 2 sticks
-				SPDR = 0x80; // Sends 0x7F (default value for DS2 sticks)
+				SPDR = 0xFF ^ DS2_STICK_CENTERED; // Sends 0x7F (default value for DS2 sticks)
         numStickBytes--;
         ack();
         while (numStickBytes) {
           if (SPSR & (1<<SPIF)) {
             numStickBytes--;
-            SPDR = 0x80; // Send another 0x7F
+            SPDR = 0xFF ^ DS2_STICK_CENTERED; // Send another 0x7F
             ack();
           }
         }
@@ -352,12 +357,12 @@ ISR(SPI_STC_vect)
 				break;
 
     case ST_ANALOGBUTTONS: // Fake stick data sent, faking DualShock 2 analog buttons by sending either 0x00 or 0xFF
-				SPDR = psxAnalogButtons[0];
+				SPDR = 0xFF ^ psxAnalogButtons[0];
         numButtonBytes++;
         ack();
         while (numButtonBytes < 12) {
           if (SPSR & (1<<SPIF)) {
-            SPDR = psxAnalogButtons[numButtonBytes];
+            SPDR = 0xFF ^ psxAnalogButtons[numButtonBytes];
             numButtonBytes++;
             ack();
           }
@@ -416,11 +421,11 @@ unsigned short snes2psx(unsigned short snesbits)
 	for (i=0; map[i].s; i++) {
 		if (!(snesbits & map[i].s)) {
 			psxval &= ~(map[i].p);
-      psxAnalogButtons[map[i].analogByte] = 0x00; // Will send 0xFF
+      psxAnalogButtons[map[i].analogByte] = DS2_ANALOG_BUTTON_PRESSED;
     }
     else
     {
-      psxAnalogButtons[map[i].analogByte] = 0xFF; // Will send 0x00, or unpressed
+      psxAnalogButtons[map[i].analogByte] = DS2_ANALOG_BUTTON_UNPRESSED;
     }
 	}
 
@@ -542,7 +547,7 @@ int main(void)
   {
     deviceID = DEVICE_ID_DUALSHOCK2;
   }
-  memset(psxAnalogButtons, 0, 12);
+  memset(psxAnalogButtons, DS2_ANALOG_BUTTON_UNPRESSED, 12);
 
 	sei();
 	while(1)
