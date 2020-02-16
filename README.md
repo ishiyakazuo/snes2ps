@@ -2,6 +2,7 @@
 
 AVR micro-controller firmware for an SNES controller to playstation (1/2, not USB) adapter.
 Forked from Raphnet's version to add fake DualShock 2 support for PS2 games.
+* NOTE: DualShock 2 implementation is untested, and probably incomplete enough to not work properly.  Most DualShock 2 commands do not yet work.
 
 ## Project homepage
 
